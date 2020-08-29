@@ -26,14 +26,14 @@ from utils import get_network, get_training_dataloader, get_test_dataloader, War
 from sgd_original import SGD
 from sgd_oblique import SGDOblique
 from sgd_stiefel import SGDStiefel
-from sgd_oblique_decomp import SGDObliqueDecomp
-from sgd_stiefel_decomp import SGDStiefelDecomp
-from sgd_oblique_wn2 import SGDObliqueWN
-from sgd_stiefel_wn2 import SGDStiefelWN
-from sgd_oblique_kk import SGDObliqueKK
-from sgd_stiefel_kk import SGDStiefelKK
-from sgd_oblique_cc import SGDObliqueCC
-from sgd_stiefel_cc import SGDStiefelCC
+# from sgd_oblique_decomp import SGDObliqueDecomp
+# from sgd_stiefel_decomp import SGDStiefelDecomp
+# from sgd_oblique_wn2 import SGDObliqueWN
+# from sgd_stiefel_wn2 import SGDStiefelWN
+# from sgd_oblique_kk import SGDObliqueKK
+# from sgd_stiefel_kk import SGDStiefelKK
+# from sgd_oblique_cc import SGDObliqueCC
+# from sgd_stiefel_cc import SGDStiefelCC
 
 from scaled_for_pruning import default_threshold_rate
 
@@ -150,19 +150,23 @@ if __name__ == '__main__':
     parser.add_argument('-w', '--warm', type=int, default=1, help='warm up training phase')
     parser.add_argument('-l', '--learningrate', type=float, default=0.1, help='initial learning rate')
     parser.add_argument('-m', '--momentum', type=float, default=0.9, help='momentum used in SGD')
-    parser.add_argument('-t', '--thresholdrate', type=float, default=default_threshold_rate, help='threshold rate used for pruning')
-    parser.add_argument('-stp', '--stiefelpunishment', type=float, default=0., help='Punishment factor used for stiefel manifold')
-    parser.add_argument('-d', '--decomposition', type=str, default='', help='decomposition type used for conv weights decomposition')
+    parser.add_argument('-t', '--thresholdrate', type=float, default=default_threshold_rate,
+                        help='threshold rate used for pruning')
+    parser.add_argument('-stp', '--stiefelpunishment', type=float, default=0.,
+                        help='punishment factor used for stiefel manifold')
+    # parser.add_argument('-d', '--decomposition', type=str, default='',
+    # help='decomposition type used for conv weights decomposition')
     mani_group = parser.add_mutually_exclusive_group()
     mani_group.add_argument('-o', '--oblique', action='store_true', help='use optimizer on oblique manifold')
     mani_group.add_argument('-s', '--stiefel', action='store_true', help='use optimizer on stiefel manifold')
     init_group = parser.add_mutually_exclusive_group()
     init_group.add_argument('-p', '--parainitob', action='store_true', help='weight initialization on oblique manifold')
     init_group.add_argument('-P', '--parainitst', action='store_true', help='weight initialization on stiefel manifold')
-    optim_group = parser.add_mutually_exclusive_group()
-    optim_group.add_argument('-k', '--kernel', action='store_true', help='apply feedback GD on kernel matrix')
-    optim_group.add_argument('-c', '--channel', action='store_true', help='apply feedback GD on channel matrix')
-    parser.add_argument('-f', '--feedback', action='store_true', help='use feedback integrator')
+    # optim_group = parser.add_mutually_exclusive_group()
+    # optim_group.add_argument('-k', '--kernel', action='store_true', help='apply FRGD on kernel matrix')
+    # optim_group.add_argument('-c', '--channel', action='store_true', help='apply FRGD on channel matrix')
+    parser.add_argument('-f', '--feedback', type=float, default=0.01, help='feedback factor of feedback integrator')
+    parser.add_argument('-c', '--convonly', action='store_true', help='apply feedback GD ')
     args = parser.parse_args()
 
     if args.dataset == 'cifar100':
@@ -182,67 +186,64 @@ if __name__ == '__main__':
         mean = settings.IMAGENET_TRAIN_MEAN
         std = settings.IMAGENET_TRAIN_STD
     else:  # dataset name ERROR
-        # num_classes = None
-        # mean = None
-        # std = None
         print('the dataset name you have entered is not supported yet')
         sys.exit()
     net = get_network(args, use_gpu=args.gpu, num_classes=num_classes)
 
-    # oblique parainit
+    # parameters init.
+    # oblique
     if args.oblique or args.parainitob:
         for m in net.modules():
             if isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, mean=0., std=1.)
-                m.weight.data.div_(m.weight.data.norm(dim=1).view(-1, 1))  # one-line ver.
-                # nn.init.orthogonal_(m.weight)
+                m.weight.data.div_(m.weight.data.norm(dim=1).view(-1, 1))
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.)
             elif isinstance(m, nn.Conv2d):
                 if hasattr(m, 'weight'):  # conv decomposition will delete the attribution 'weight'
-                    if args.kernel:
-                        v = m.weight.data
-                        v_f = v.view(-1, v.shape[2], v.shape[3])
-                        for f in v_f:  # f has shape (k, k) and is on Oblique manifold
-                            nn.init.normal_(f)
-                            f.div_(f.norm(dim=1).view(-1, 1))
-                    elif args.channel:
-                        v = m.weight.data
-                        v_f = v.permute(2, 3, 0, 1).view(-1, v.shape[0], v.shape[1])
-                        for f in v_f:  # f has shape (c_out, c_in) and is on Oblique manifold
-                            nn.init.normal_(f)
-                            f.div_(f.norm(dim=1).view(-1, 1))
-                    else:
-                        nn.init.normal_(m.weight, mean=0., std=1.)
-                        m.weight.data.div_(m.weight.data.view(m.weight.shape[0], -1).norm(dim=1).view(-1, 1, 1, 1))  # one-line ver.
+                    # if args.kernel:
+                    #     v = m.weight.data
+                    #     v_f = v.view(-1, v.shape[2], v.shape[3])
+                    #     for f in v_f:  # f has shape (k, k) and is on Oblique manifold
+                    #         nn.init.normal_(f)
+                    #         f.div_(f.norm(dim=1).view(-1, 1))
+                    # elif args.channel:
+                    #     v = m.weight.data
+                    #     v_f = v.permute(2, 3, 0, 1).view(-1, v.shape[0], v.shape[1])
+                    #     for f in v_f:  # f has shape (c_out, c_in) and is on Oblique manifold
+                    #         nn.init.normal_(f)
+                    #         f.div_(f.norm(dim=1).view(-1, 1))
+                    # else:
+                    nn.init.normal_(m.weight, mean=0., std=1.)
+                    m.weight.data.div_(m.weight.data.view(m.weight.shape[0], -1).norm(dim=1).view(-1, 1, 1, 1))
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.)
 
-    # stiefel parainit
+    # stiefel
     elif args.stiefel or args.parainitst:
         for m in net.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight)
-                m.weight.data.div_(m.weight.data.norm(dim=1).view(-1, 1))  # one-line ver.
+                m.weight.data.div_(m.weight.data.norm(dim=1).view(-1, 1))
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.)
             elif isinstance(m, nn.Conv2d):
                 if hasattr(m, 'weight'):  # conv decomposition will delete the attribution 'weight'
-                    if args.kernel:
-                        v = m.weight.data
-                        v_f = v.view(-1, v.shape[2], v.shape[3])
-                        for f in v_f:  # f has shape (k, k) and is on Oblique manifold
-                            nn.init.orthogonal_(f)
-                            f.div_(f.norm(dim=1).view(-1, 1))
-                    elif args.channel:
-                        v = m.weight.data
-                        v_f = v.permute(2, 3, 0, 1).view(-1, v.shape[0], v.shape[1])
-                        for f in v_f:  # f has shape (c_out, c_in) and is on Oblique manifold
-                            nn.init.orthogonal_(f)
-                            f.div_(f.norm(dim=1).view(-1, 1))
-                    else:
-                        nn.init.orthogonal_(m.weight)
-                        m.weight.data.div_(m.weight.data.view(m.weight.shape[0], -1).norm(dim=1).view(-1, 1, 1, 1))  # one-line ver.
+                    # if args.kernel:
+                    #     v = m.weight.data
+                    #     v_f = v.view(-1, v.shape[2], v.shape[3])
+                    #     for f in v_f:  # f has shape (k, k) and is on Oblique manifold
+                    #         nn.init.orthogonal_(f)
+                    #         f.div_(f.norm(dim=1).view(-1, 1))
+                    # elif args.channel:
+                    #     v = m.weight.data
+                    #     v_f = v.permute(2, 3, 0, 1).view(-1, v.shape[0], v.shape[1])
+                    #     for f in v_f:  # f has shape (c_out, c_in) and is on Oblique manifold
+                    #         nn.init.orthogonal_(f)
+                    #         f.div_(f.norm(dim=1).view(-1, 1))
+                    # else:
+                    nn.init.orthogonal_(m.weight)
+                    m.weight.data.div_(m.weight.data.view(m.weight.shape[0], -1).norm(dim=1).view(-1, 1, 1, 1))
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.)
 
@@ -264,34 +265,46 @@ if __name__ == '__main__':
     )
 
     loss_function = nn.CrossEntropyLoss()
-    # optimizer = optim.SGD(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4)
+
+    lr = args.learningrate
+    mmt = args.momentum
     if args.oblique:
-        if args.decomposition:
-            optimizer = SGDObliqueDecomp(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback, decomp_type=args.decomposition)
-        elif 'wn2' in args.net:
-            optimizer = SGDObliqueWN(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        elif args.kernel:
-            optimizer = SGDObliqueKK(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        elif args.channel:
-            optimizer = SGDObliqueCC(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        else:
-            optimizer = SGDOblique(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
+        fb = args.feedback
+        co = args.convonly
+        # if args.decomposition:
+        #     optimizer = SGDObliqueDecomp(net.parameters(), lr=args.learningrate, momentum=args.momentum,
+        #                                  weight_decay=5e-4, feedback=args.feedback, decomp_type=args.decomposition)
+        # elif 'wn2' in args.net:
+        #     optimizer = SGDObliqueWN(net.parameters(), lr=args.learningrate, momentum=args.momentum,
+        #                              weight_decay=5e-4, feedback=args.feedback)
+        # elif args.kernel:
+        #     optimizer = SGDObliqueKK(net.parameters(), lr=args.learningrate, momentum=args.momentum,
+        #                              weight_decay=5e-4, feedback=args.feedback)
+        # elif args.channel:
+        #     optimizer = SGDObliqueCC(net.parameters(), lr=args.learningrate, momentum=args.momentum,
+        #                              weight_decay=5e-4, feedback=args.feedback)
+        # else:
+        optimizer = SGDOblique(net.parameters(), lr=lr, momentum=mmt, weight_decay=5e-4, feedback=fb, conv_only=co)
     elif args.stiefel:
-        if args.decomposition:
-            optimizer = SGDStiefelDecomp(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4,
-                                         feedback=args.feedback, punishment=args.stiefelpunishment, decomp_type=args.decomposition)
-        elif 'wn2' in args.net:
-            optimizer = SGDStiefelWN(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        elif args.kernel:
-            optimizer = SGDStiefelKK(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        elif args.channel:
-            optimizer = SGDStiefelCC(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
-        else:
-            optimizer = SGDStiefel(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4,
-                                   feedback=args.feedback, punishment=args.stiefelpunishment)
+        fb = args.feedback
+        pns = args.stiefelpunishment
+        co = args.convonly
+        # if args.decomposition:
+        #     optimizer = SGDStiefelDecomp(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4,
+        #                                  feedback=args.feedback, punishment=args.stiefelpunishment, decomp_type=args.decomposition)
+        # elif 'wn2' in args.net:
+        #     optimizer = SGDStiefelWN(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
+        # elif args.kernel:
+        #     optimizer = SGDStiefelKK(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
+        # elif args.channel:
+        #     optimizer = SGDStiefelCC(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4, feedback=args.feedback)
+        # else:
+        optimizer = SGDStiefel(net.parameters(), lr=lr, momentum=mmt, weight_decay=5e-4,
+                               feedback=fb, punishment=pns, conv_only=co)
     else:
-        optimizer = SGD(net.parameters(), lr=args.learningrate, momentum=args.momentum, weight_decay=5e-4)
-    train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.5)  # learning rate decay
+        optimizer = SGD(net.parameters(), lr=lr, momentum=mmt, weight_decay=5e-4)
+
+    train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.5)  # lr decay
     iter_per_epoch = len(training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
     tag = ''
@@ -304,17 +317,19 @@ if __name__ == '__main__':
     if args.stiefel:
         tag += 's'
     if args.feedback:
-        tag += 'f'
-    if args.kernel:
-        tag += 'k'
-    if args.channel:
+        tag += 'f' + str(args.feedback) + '_'
+    # if args.kernel:
+    #     tag += 'k'
+    # if args.channel:
+    #     tag += 'c'
+    if args.convonly:
         tag += 'c'
     if 'p' in args.net:
         tag += '_t_' + str(args.thresholdrate)
     if args.stiefelpunishment > 0:
         tag += '_stp_' + str(args.stiefelpunishment)
-    if args.decomposition:
-        tag += '_decomp_' + args.decomposition
+    # if args.decomposition:
+    #     tag += '_decomp_' + args.decomposition
     log_file_name = tag + '_' + settings.TIME_NOW
     checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, log_file_name)
 
@@ -346,7 +361,6 @@ if __name__ == '__main__':
             torch.save(net.state_dict(), checkpoint_path.format(net=net_tag, epoch=epoch, type='best'))
             best_acc = acc
             continue
-
         if not epoch % settings.SAVE_EPOCH:
             torch.save(net.state_dict(), checkpoint_path.format(net=net_tag, epoch=epoch, type='regular'))
 
