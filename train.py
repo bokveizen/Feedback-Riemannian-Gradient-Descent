@@ -165,7 +165,8 @@ if __name__ == '__main__':
     # optim_group = parser.add_mutually_exclusive_group()
     # optim_group.add_argument('-k', '--kernel', action='store_true', help='apply FRGD on kernel matrix')
     # optim_group.add_argument('-c', '--channel', action='store_true', help='apply FRGD on channel matrix')
-    parser.add_argument('-f', '--feedback', type=float, default=0.01, help='feedback factor of feedback integrator')
+    parser.add_argument('-f', '--feedback', type=float, nargs=2, default=[1., 1.],
+                        help='feedback factor of feedback integrator')
     parser.add_argument('-c', '--convonly', action='store_true', help='apply feedback GD ')
     args = parser.parse_args()
 
@@ -269,7 +270,7 @@ if __name__ == '__main__':
     lr = args.learningrate
     mmt = args.momentum
     if args.oblique:
-        fb = args.feedback
+        fb = tuple(args.feedback)
         co = args.convonly
         # if args.decomposition:
         #     optimizer = SGDObliqueDecomp(net.parameters(), lr=args.learningrate, momentum=args.momentum,
@@ -286,7 +287,7 @@ if __name__ == '__main__':
         # else:
         optimizer = SGDOblique(net.parameters(), lr=lr, momentum=mmt, weight_decay=5e-4, feedback=fb, conv_only=co)
     elif args.stiefel:
-        fb = args.feedback
+        fb = tuple(args.feedback)
         pns = args.stiefelpunishment
         co = args.convonly
         # if args.decomposition:
@@ -304,7 +305,7 @@ if __name__ == '__main__':
     else:
         optimizer = SGD(net.parameters(), lr=lr, momentum=mmt, weight_decay=5e-4)
 
-    train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.5)  # lr decay
+    train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2)  # lr decay
     iter_per_epoch = len(training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
     tag = ''
@@ -316,7 +317,7 @@ if __name__ == '__main__':
         tag += 'o'
     if args.stiefel:
         tag += 's'
-    if args.feedback:
+    if (args.oblique or args.stiefel) and args.feedback:
         tag += 'f' + str(args.feedback) + '_'
     # if args.kernel:
     #     tag += 'k'
