@@ -258,7 +258,7 @@ class SGDStiefel(Optimizer):
                                     buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
                                     buf.add_(d_p)
                                     buf_2d = buf.view_as(p_2d)
-                                    q = buf_2d.mm(p_2d)
+                                    q = buf_2d.mm(p_2d.t())
                                     q = q.add(q.t()).mul(0.5)
                                     buf_2d.sub_(q.mm(inverse_approx_2d).mm(p_2d))
                                     buf.mul_(-group['lr'])
