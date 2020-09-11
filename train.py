@@ -61,27 +61,35 @@ def train(epoch, use_gpu):
         cur_index_conv = 0
         for p in net.parameters():
             if p.dim() == 2:  # FC weight
-                norm_mean = p.data.norm(dim=1).mean()
-                norm_var = p.data.norm(dim=1).var()
-                dist_from_st = (p.data.mm(p.data.t()) - torch.eye(p.data.shape[0], device=p.device)).norm()
-                writer.add_scalar('LinearLayer{}WeightsNorms/norm_mean'.format(cur_index_fc),
-                                  norm_mean, n_iter)
-                writer.add_scalar('LinearLayer{}WeightsNorms/norm_var'.format(cur_index_fc),
-                                  norm_var, n_iter)
+                # norm_mean = p.data.norm(dim=1).mean()
+                # norm_var = p.data.norm(dim=1).var()
+                ppt_from_eye = p.data.mm(p.data.t()) - torch.eye(p.data.shape[0], device=p.device)
+                dist_from_st = ppt_from_eye.norm()
+                dist_from_ob = ppt_from_eye.diag().diag().norm()
+                # writer.add_scalar('LinearLayer{}WeightsNorms/norm_mean'.format(cur_index_fc),
+                #                   norm_mean, n_iter)
+                # writer.add_scalar('LinearLayer{}WeightsNorms/norm_var'.format(cur_index_fc),
+                #                   norm_var, n_iter)
                 writer.add_scalar('LinearLayer{}WeightsNorms/dist_from_st'.format(cur_index_fc),
                                   dist_from_st, n_iter)
+                writer.add_scalar('LinearLayer{}WeightsNorms/dist_from_ob'.format(cur_index_fc),
+                                  dist_from_ob, n_iter)
                 cur_index_fc += 1
             elif p.dim() == 4:  # Conv weight
                 p_2d = p.data.view(p.data.shape[0], -1)
-                norm_mean = p_2d.norm(dim=1).mean()
-                norm_var = p_2d.norm(dim=1).var()
-                dist_from_st = (p_2d.mm(p_2d.t()) - torch.eye(p_2d.shape[0], device=p.device)).norm()
-                writer.add_scalar('ConvLayer{}WeightsNorms/norm_mean'.format(cur_index_conv),
-                                  norm_mean, n_iter)
-                writer.add_scalar('ConvLayer{}WeightsNorms/norm_var'.format(cur_index_conv),
-                                  norm_var, n_iter)
+                # norm_mean = p_2d.norm(dim=1).mean()
+                # norm_var = p_2d.norm(dim=1).var()
+                ppt_from_eye = p_2d.mm(p_2d.t()) - torch.eye(p_2d.shape[0], device=p.device)
+                dist_from_st = ppt_from_eye.norm()
+                dist_from_ob = ppt_from_eye.diag().diag().norm()
+                # writer.add_scalar('ConvLayer{}WeightsNorms/norm_mean'.format(cur_index_conv),
+                #                   norm_mean, n_iter)
+                # writer.add_scalar('ConvLayer{}WeightsNorms/norm_var'.format(cur_index_conv),
+                #                   norm_var, n_iter)
                 writer.add_scalar('ConvLayer{}WeightsNorms/dist_from_st'.format(cur_index_conv),
                                   dist_from_st, n_iter)
+                writer.add_scalar('ConvLayer{}WeightsNorms/dist_from_ob'.format(cur_index_conv),
+                                  dist_from_ob, n_iter)
                 cur_index_conv += 1
         last_layer = list(net.children())[-1]
         for name, para in last_layer.named_parameters():
@@ -167,7 +175,7 @@ if __name__ == '__main__':
     # optim_group.add_argument('-c', '--channel', action='store_true', help='apply FRGD on channel matrix')
     parser.add_argument('-f', '--feedback', type=float, nargs=2, default=[1., 1.],
                         help='feedback factor of feedback integrator')
-    parser.add_argument('-c', '--convonly', action='store_true', help='apply feedback GD ')
+    parser.add_argument('-c', '--convonly', action='store_true', help='apply feedback GD only on conv layers')
     args = parser.parse_args()
 
     if args.dataset == 'cifar100':

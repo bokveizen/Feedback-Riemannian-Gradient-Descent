@@ -786,6 +786,18 @@ def get_network(args, use_gpu=True, num_classes=100):
     elif args.net == 'wres2810':
         from models.wideresnet import wideresnet2810
         net = wideresnet2810(num_classes)
+    elif args.net == 'wres2810wn':
+        from models.wideresnet_wn import wideresnet2810
+        net = wideresnet2810(num_classes)
+    elif args.net == 'wres2810wncw':
+        from models.wideresnet_wn_conv_only import wideresnet2810
+        net = wideresnet2810(num_classes)
+    elif args.net == 'wres2810wnc':
+        from models.wideresnet_wn_channel_wise import wideresnet2810
+        net = wideresnet2810(num_classes)
+    elif args.net == 'wres2810wnccw':
+        from models.wideresnet_wn_conv_only_channel_wise import wideresnet2810
+        net = wideresnet2810(num_classes)
 
     # torchvision models
     elif args.net == 'tvresnet18':

@@ -88,6 +88,7 @@ def wideresnet2810(num_classes=100):
     return Wide_ResNet(28, 10, 0.3, num_classes)
 
 
+
 # if __name__ == '__main__':
 #     net = Wide_ResNet(28, 10, 0.3, 10)
 #     y = net(Variable(torch.randn(1, 3, 32, 32)))
